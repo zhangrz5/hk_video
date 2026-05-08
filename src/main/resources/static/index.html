@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>海康视频监控</title>
+    <meta name="description" content="海康威视视频监控管理平台 - 预览、回放、云台控制、抓图、录像">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/styles.css">
+    <script src="https://cdn.jsdelivr.net/npm/flv.js@1/dist/flv.min.js"></script>
+    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+</head>
+<body>
+<div class="app-shell">
+    <header class="topbar">
+        <div class="topbar-left">
+            <div class="logo-icon"><i data-lucide="shield-check"></i></div>
+            <div>
+                <h1>视频监控</h1>
+                <p id="statusText">等待加载监控点</p>
+            </div>
+        </div>
+        <button class="icon-button" id="refreshBtn" title="刷新">
+            <i data-lucide="refresh-cw"></i>
+        </button>
+    </header>
+
+    <main class="workspace">
+        <!-- 左侧：紧凑的监控点列表 -->
+        <aside class="camera-pane" aria-label="监控点列表">
+            <form class="search-bar" id="searchForm">
+                <div class="search-input-wrap">
+                    <i data-lucide="search"></i>
+                    <input id="keywordInput" name="keyword" autocomplete="off" placeholder="搜索监控点...">
+                </div>
+                <select id="pageSizeSelect" class="page-size-select" title="每页条数">
+                    <option value="20">20</option>
+                    <option value="50">50</option>
+                    <option value="100">100</option>
+                </select>
+            </form>
+
+            <div class="camera-list" id="cameraList">
+                <div class="camera-empty">暂无监控点</div>
+            </div>
+
+            <footer class="pager">
+                <button class="pager-btn" id="prevBtn" type="button" title="上一页">
+                    <i data-lucide="chevron-left"></i>
+                </button>
+                <span id="pageText">1 / 1</span>
+                <button class="pager-btn" id="nextBtn" type="button" title="下一页">
+                    <i data-lucide="chevron-right"></i>
+                </button>
+            </footer>
+        </aside>
+
+        <!-- 右侧：大面积播放器 -->
+        <section class="player-pane" aria-label="视频播放">
+            <div class="player-head">
+                <div>
+                    <h2 id="cameraTitle">未选择监控点</h2>
+                    <p id="cameraMeta">从左侧列表选择一个监控点</p>
+                </div>
+                <div class="head-actions">
+                    <button class="action-btn action-primary" id="playBtn" type="button" disabled>
+                        <i data-lucide="play"></i>
+                        <span>预览</span>
+                    </button>
+                    <button class="action-btn" id="stopBtn" type="button" disabled>
+                        <i data-lucide="square"></i>
+                        <span>停止</span>
+                    </button>
+                    <button class="action-btn" id="captureBtn" type="button" disabled title="手动抓图">
+                        <i data-lucide="camera"></i>
+                        <span>抓图</span>
+                    </button>
+                    <button class="action-btn" id="recordStartBtn" type="button" disabled title="开始录像">
+                        <i data-lucide="circle-dot"></i>
+                        <span>录像</span>
+                    </button>
+                </div>
+            </div>
+
+            <div class="video-frame">
+                <video id="videoPlayer" controls autoplay muted playsinline></video>
+            </div>
+
+            <!-- 下方面板：回放 + 云台 并排 -->
+            <div class="controls-row">
+                <div class="control-card">
+                    <h3><i data-lucide="history"></i> 录像回放</h3>
+                    <div class="playback-form">
+                        <label class="field">
+                            <span>开始</span>
+                            <input id="playbackBegin" type="datetime-local">
+                        </label>
+                        <label class="field">
+                            <span>结束</span>
+                            <input id="playbackEnd" type="datetime-local">
+                        </label>
+                        <button class="action-btn action-primary" id="playbackBtn" type="button" disabled>
+                            <i data-lucide="play"></i><span>回放</span>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="control-card">
+                    <h3><i data-lucide="move"></i> 云台控制</h3>
+                    <div class="ptz-compact">
+                        <div class="ptz-grid">
+                            <button class="ptz-btn" data-cmd="LEFT_UP">↖</button>
+                            <button class="ptz-btn" data-cmd="UP">↑</button>
+                            <button class="ptz-btn" data-cmd="RIGHT_UP">↗</button>
+                            <button class="ptz-btn" data-cmd="LEFT">←</button>
+                            <div class="ptz-center"><i data-lucide="circle-dot"></i></div>
+                            <button class="ptz-btn" data-cmd="RIGHT">→</button>
+                            <button class="ptz-btn" data-cmd="LEFT_DOWN">↙</button>
+                            <button class="ptz-btn" data-cmd="DOWN">↓</button>
+                            <button class="ptz-btn" data-cmd="RIGHT_DOWN">↘</button>
+                        </div>
+                        <div class="ptz-side">
+                            <button class="ptz-side-btn" data-cmd="ZOOM_IN" title="放大"><i data-lucide="zoom-in"></i></button>
+                            <button class="ptz-side-btn" data-cmd="ZOOM_OUT" title="缩小"><i data-lucide="zoom-out"></i></button>
+                            <button class="ptz-side-btn" data-cmd="FOCUS_NEAR" title="聚焦近"><i data-lucide="scan"></i></button>
+                            <button class="ptz-side-btn" data-cmd="FOCUS_FAR" title="聚焦远"><i data-lucide="eye"></i></button>
+                            <label class="speed-label">
+                                <input id="ptzSpeed" type="range" min="1" max="7" value="4">
+                            </label>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+</div>
+
+<!-- 抓图弹窗 -->
+<dialog id="captureDialog" class="capture-dialog">
+    <div class="capture-dialog-head">
+        <h3>抓图结果</h3>
+        <button class="ghost-button" id="captureCloseBtn" type="button">✕</button>
+    </div>
+    <div class="capture-dialog-body">
+        <img id="captureImg" alt="抓图">
+    </div>
+    <div class="capture-dialog-foot">
+        <a class="action-btn action-primary" id="captureDownload" href="" download="capture.jpg" target="_blank">
+            <i data-lucide="download"></i>
+            <span>下载</span>
+        </a>
+    </div>
+</dialog>
+
+<script src="/app.js"></script>
+</body>
+</html>
