@@ -3,3 +3,4 @@ target/
 app.log
 app.err.log
 src/main/resources/application.yml
+.idea

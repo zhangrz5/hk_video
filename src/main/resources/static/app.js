@@ -222,10 +222,32 @@ async function doCapture() {
     try {
         const r = await fetchJson(`/api/hikvision/cameras/${encodeURIComponent(state.selected.cameraIndexCode)}/capture`, { method: "POST" });
         els.captureImg.src = r.picUrl;
-        els.captureDownload.href = r.picUrl;
+        state.capturePicUrl = r.picUrl;
         els.captureDialog.showModal();
         setStatus("抓图成功");
     } catch (e) { setStatus(e.message); }
+}
+
+async function downloadCapture() {
+    if (!state.capturePicUrl) return;
+    try {
+        setStatus("正在下载图片...");
+        const proxyUrl = `/api/hikvision/image/proxy?url=${encodeURIComponent(state.capturePicUrl)}`;
+        const resp = await fetch(proxyUrl);
+        if (!resp.ok) throw new Error(`下载失败: ${resp.status}`);
+        const blob = await resp.blob();
+        const blobUrl = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = blobUrl;
+        a.download = `capture_${new Date().toISOString().replace(/[:.]/g, "-")}.jpg`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(blobUrl);
+        setStatus("图片已下载");
+    } catch (e) {
+        setStatus("下载失败: " + e.message);
+    }
 }
 
 // ===================== 录像 =====================
@@ -283,6 +305,7 @@ els.pageSizeSelect.addEventListener("change", () => { state.pageSize = Number(el
 els.playbackBtn.addEventListener("click", playPlayback);
 els.captureBtn.addEventListener("click", doCapture);
 els.captureCloseBtn.addEventListener("click", () => els.captureDialog.close());
+els.captureDownload.addEventListener("click", downloadCapture);
 els.captureDialog.addEventListener("click", e => { if (e.target === els.captureDialog) els.captureDialog.close(); });
 els.recordStartBtn.addEventListener("click", toggleRecord);
 initPtzControls();

@@ -97,7 +97,12 @@ public class StreamController {
                     outputStream.flush();
                 }
             } catch (Exception e) {
-                log.debug("流传输结束: key={}, reason={}", streamKey, e.getMessage());
+                log.warn("流传输异常: key={}, reason={}", streamKey, e.getMessage());
+                // 向前端写入非 FLV 数据，触发 flvjs 的 ERROR 事件
+                try {
+                    outputStream.write(("ERROR: " + e.getMessage()).getBytes());
+                    outputStream.flush();
+                } catch (Exception ignored) {}
             } finally {
                 ffmpegService.stopStream(streamKey);
             }

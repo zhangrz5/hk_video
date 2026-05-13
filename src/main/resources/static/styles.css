@@ -393,6 +393,10 @@ video {
     gap: 12px;
 }
 
+.deferred-feature[hidden] {
+    display: none !important;
+}
+
 .control-card {
     padding: 14px;
     background: var(--surface2);

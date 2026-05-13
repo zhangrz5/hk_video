@@ -88,8 +88,8 @@
                 <video id="videoPlayer" controls autoplay muted playsinline></video>
             </div>
 
-            <!-- 下方面板：回放 + 云台 并排 -->
-            <div class="controls-row">
+            <!-- Feature deferred: playback and PTZ UI kept for later enablement. -->
+            <div class="controls-row deferred-feature" data-feature-state="deferred" hidden>
                 <div class="control-card">
                     <h3><i data-lucide="history"></i> 录像回放</h3>
                     <div class="playback-form">
@@ -147,10 +147,10 @@
         <img id="captureImg" alt="抓图">
     </div>
     <div class="capture-dialog-foot">
-        <a class="action-btn action-primary" id="captureDownload" href="" download="capture.jpg" target="_blank">
+        <button class="action-btn action-primary" id="captureDownload" type="button">
             <i data-lucide="download"></i>
             <span>下载</span>
-        </a>
+        </button>
     </div>
 </dialog>
 

@@ -13,6 +13,10 @@ import com.example.hkvideo.web.dto.RecordResponse;
 import com.fasterxml.jackson.databind.JsonNode;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.web.util.UriUtils;
 
@@ -210,6 +214,65 @@ public class HikvisionVideoService {
         log.debug("停止手动录像: camera={}, taskID={}", cameraIndexCode, taskID);
         JsonNode root = openApiClient.post(properties.getManualRecordStopPath(), body);
         extractData(root); // 校验返回码
+    }
+    // ===================== 图片代理下载 =====================
+
+    /**
+     * 代理下载海康平台图片，解决前端跨域无法直接下载的问题。
+     *
+     * @param url 海康返回的图片 URL
+     * @return 图片二进制数据
+     */
+    public ResponseEntity<byte[]> proxyImage(String url) {
+        if (url == null || url.isBlank()) {
+            throw new HikvisionException("图片 URL 不能为空");
+        }
+        log.debug("代理下载图片: {}", url);
+        try {
+            // 海康平台使用自签名证书，跳过 SSL 验证
+            javax.net.ssl.TrustManager[] trustAll = {
+                    new javax.net.ssl.X509TrustManager() {
+                        public java.security.cert.X509Certificate[] getAcceptedIssuers() { return null; }
+                        public void checkClientTrusted(java.security.cert.X509Certificate[] certs, String t) {}
+                        public void checkServerTrusted(java.security.cert.X509Certificate[] certs, String t) {}
+                    }
+            };
+            javax.net.ssl.SSLContext sc = javax.net.ssl.SSLContext.getInstance("TLS");
+            sc.init(null, trustAll, new java.security.SecureRandom());
+
+            java.net.URL imgUrl = new java.net.URL(url);
+            java.net.HttpURLConnection conn = (java.net.HttpURLConnection) imgUrl.openConnection();
+            if (conn instanceof javax.net.ssl.HttpsURLConnection httpsConn) {
+                httpsConn.setSSLSocketFactory(sc.getSocketFactory());
+                httpsConn.setHostnameVerifier((hostname, session) -> true);
+            }
+            conn.setRequestMethod("GET");
+            conn.setConnectTimeout(10_000);
+            conn.setReadTimeout(30_000);
+            conn.connect();
+
+            int code = conn.getResponseCode();
+            if (code != 200) {
+                throw new HikvisionException("下载图片失败，HTTP 状态码: " + code);
+            }
+
+            byte[] data = conn.getInputStream().readAllBytes();
+            String contentType = conn.getContentType();
+            conn.disconnect();
+
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.parseMediaType(
+                    contentType != null && !contentType.isBlank() ? contentType : "image/jpeg"));
+            headers.set(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"capture.jpg\"");
+            headers.setContentLength(data.length);
+
+            return new ResponseEntity<>(data, headers, HttpStatus.OK);
+        } catch (HikvisionException e) {
+            throw e;
+        } catch (Exception e) {
+            log.error("代理下载图片异常: {}", e.getMessage(), e);
+            throw new HikvisionException("代理下载图片失败: " + e.getMessage());
+        }
     }
 
     // ===================== 调试 =====================

@@ -106,6 +106,13 @@ public class HikvisionController {
         return ResponseEntity.ok().build();
     }
 
+    // ===================== 图片代理下载 =====================
+
+    @GetMapping("/image/proxy")
+    public ResponseEntity<byte[]> proxyImage(@RequestParam("url") String url) {
+        return videoService.proxyImage(url);
+    }
+
     // ===================== 调试：原始接口透传 =====================
 
     /**

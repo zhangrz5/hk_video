@@ -52,31 +52,49 @@ public class FfmpegStreamService {
         // 如果同 key 已有进程，先停止
         stopStream(streamKey);
 
-        List<String> cmd = buildCommand(rtspUrl);
-        log.info("启动 FFmpeg: key={}, cmd={}", streamKey, String.join(" ", cmd));
+        int maxRetries = 2;
+        for (int attempt = 1; attempt <= maxRetries; attempt++) {
+            List<String> cmd = buildCommand(rtspUrl);
+            log.info("启动 FFmpeg (第{}次): key={}, cmd={}", attempt, streamKey, String.join(" ", cmd));
 
-        ProcessBuilder pb = new ProcessBuilder(cmd);
-        pb.redirectErrorStream(false);
-        Process process = pb.start();
+            ProcessBuilder pb = new ProcessBuilder(cmd);
+            pb.redirectErrorStream(false);
+            Process process = pb.start();
 
-        activeStreams.put(streamKey, process);
+            // 异步消费 stderr（FFmpeg 日志/进度信息），防止缓冲区满导致阻塞
+            CompletableFuture.runAsync(() -> consumeStderr(process, streamKey));
 
-        // 超时自动终止
-        scheduler.schedule(() -> {
-            log.warn("FFmpeg 超时终止: key={}", streamKey);
-            stopStream(streamKey);
-        }, config.getTimeout(), TimeUnit.SECONDS);
+            // 等待一小段时间，检查进程是否立即退出（RTSP 连接失败时会快速退出）
+            try { Thread.sleep(2000); } catch (InterruptedException ignored) { Thread.currentThread().interrupt(); }
 
-        // 异步消费 stderr（FFmpeg 日志/进度信息），防止缓冲区满导致阻塞
-        CompletableFuture.runAsync(() -> consumeStderr(process, streamKey));
+            if (!process.isAlive()) {
+                int exitCode = process.exitValue();
+                log.warn("FFmpeg 启动后立即退出: key={}, exitCode={}, attempt={}/{}", streamKey, exitCode, attempt, maxRetries);
+                if (attempt < maxRetries) {
+                    log.info("FFmpeg 重试中...");
+                    continue;
+                }
+                throw new IOException("FFmpeg 启动失败（已重试 " + maxRetries + " 次），exitCode=" + exitCode);
+            }
 
-        // 监听进程退出
-        process.onExit().thenAccept(p -> {
-            log.info("FFmpeg 进程退出: key={}, exitCode={}", streamKey, p.exitValue());
-            activeStreams.remove(streamKey);
-        });
+            activeStreams.put(streamKey, process);
 
-        return process.getInputStream();
+            // 超时自动终止
+            scheduler.schedule(() -> {
+                log.warn("FFmpeg 超时终止: key={}", streamKey);
+                stopStream(streamKey);
+            }, config.getTimeout(), TimeUnit.SECONDS);
+
+            // 监听进程退出
+            process.onExit().thenAccept(p -> {
+                log.info("FFmpeg 进程退出: key={}, exitCode={}", streamKey, p.exitValue());
+                activeStreams.remove(streamKey);
+            });
+
+            return process.getInputStream();
+        }
+
+        throw new IOException("FFmpeg 启动失败");
     }
 
     /**
@@ -101,9 +119,13 @@ public class FfmpegStreamService {
         List<String> cmd = new ArrayList<>();
         cmd.add(config.getPath());
 
-        // 输入参数
+        // 输入参数（增加超时与重连参数，减少首次连接失败概率）
         cmd.addAll(List.of(
                 "-rtsp_transport", "tcp",
+                "-stimeout", "10000000",        // RTSP 连接超时 10 秒（微秒）
+                "-rw_timeout", "10000000",       // 读写超时 10 秒（微秒）
+                "-analyzeduration", "5000000",   // 分析时长 5 秒（微秒）
+                "-probesize", "5000000",         // 探测大小 5MB
                 "-i", rtspUrl
         ));
 
