@@ -8,7 +8,9 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.context.request.async.AsyncRequestNotUsableException;
 
+import java.io.IOException;
 import java.time.Instant;
 
 @RestControllerAdvice
@@ -25,6 +27,12 @@ public class GlobalExceptionHandler {
     ResponseEntity<ApiErrorResponse> handleBadRequest(Exception ex) {
         return ResponseEntity.badRequest()
                 .body(new ApiErrorResponse("BAD_REQUEST", ex.getMessage(), Instant.now()));
+    }
+
+    @ExceptionHandler({AsyncRequestNotUsableException.class, IOException.class})
+    void handleClientDisconnect(Exception ex) {
+        // The browser, curl, or Nginx closed a streaming response. The FLV response
+        // may already be committed, so do not try to write a JSON error body.
     }
 
     @ExceptionHandler(Exception.class)

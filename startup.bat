@@ -5,13 +5,15 @@ setlocal EnableDelayedExpansion
 set "APP_NAME=hk-video"
 set "APP_JAR=hk-video-0.0.1-SNAPSHOT.jar"
 set "APP_DIR=%~dp0"
-set "APP_JAR_PATH=%APP_DIR%%APP_JAR%"
+set "APP_JAR_PATH=%APP_DIR%target\%APP_JAR%"
 set "LOG_FILE=%APP_DIR%%APP_NAME%.log"
 set "PID_FILE=%APP_DIR%%APP_NAME%.pid"
 
 set "SERVER_PORT=8080"
 set "FFMPEG_PATH=%APP_DIR%ffmpeg\ffmpeg-8.1.1-essentials_build\bin\ffmpeg.exe"
 set "JAVA_OPTS=-Xms256m -Xmx512m"
+set "JAVA_EXE=java"
+if defined JAVA_HOME if exist "%JAVA_HOME%\bin\java.exe" set "JAVA_EXE=%JAVA_HOME%\bin\java.exe"
 
 if "%~1"=="" goto usage
 if /i "%~1"=="start" goto start
@@ -36,15 +38,10 @@ if not exist "%APP_JAR_PATH%" (
     goto theend
 )
 echo [%APP_NAME%] Starting...
-start /b "" javaw %JAVA_OPTS% -jar "%APP_JAR_PATH%" --server.port=%SERVER_PORT% --hikvision.ffmpeg.path="%FFMPEG_PATH%" > "%LOG_FILE%" 2>&1
+start /b "" "%JAVA_EXE%" %JAVA_OPTS% -jar "%APP_JAR_PATH%" --server.port=%SERVER_PORT% --hikvision.ffmpeg.path="%FFMPEG_PATH%" > "%LOG_FILE%" 2>&1
 timeout /t 3 /nobreak >nul
-for /f "tokens=2" %%a in ('wmic process where "commandline like '%%%APP_JAR%%%' and name='javaw.exe'" get processid 2^>nul ^| findstr /r "[0-9]"') do (
+for /f %%a in ('powershell -NoProfile -Command "Get-CimInstance Win32_Process | Where-Object { $_.Name -like 'java*' -and $_.CommandLine -like '*%APP_JAR%*' } | Sort-Object CreationDate -Descending | Select-Object -First 1 -ExpandProperty ProcessId"') do (
     set "NEW_PID=%%a"
-)
-if not defined NEW_PID (
-    for /f "tokens=2" %%a in ('wmic process where "commandline like '%%%APP_JAR%%%'" get processid 2^>nul ^| findstr /r "[0-9]"') do (
-        set "NEW_PID=%%a"
-    )
 )
 if defined NEW_PID (
     echo !NEW_PID!> "%PID_FILE%"
@@ -58,12 +55,17 @@ goto theend
 
 :stop
 if not exist "%PID_FILE%" (
-    echo [%APP_NAME%] Not running
+    echo [%APP_NAME%] PID file not found, stopping matching Java processes...
+    powershell -NoProfile -Command "Get-CimInstance Win32_Process | Where-Object { $_.Name -like 'java*' -and $_.CommandLine -like '*%APP_JAR%*' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }"
+    echo [%APP_NAME%] Stopped
     goto theend
 )
 set /p STOP_PID=<"%PID_FILE%"
 echo [%APP_NAME%] Stopping PID: !STOP_PID! ...
 taskkill /PID !STOP_PID! /F >nul 2>&1
+for /f %%a in ('powershell -NoProfile -Command "Get-CimInstance Win32_Process | Where-Object { $_.Name -like 'java*' -and $_.CommandLine -like '*%APP_JAR%*' } | Select-Object -ExpandProperty ProcessId"') do (
+    taskkill /PID %%a /F >nul 2>&1
+)
 del /f "%PID_FILE%" >nul 2>&1
 echo [%APP_NAME%] Stopped
 goto theend
@@ -85,7 +87,15 @@ if exist "%PID_FILE%" (
         del /f "%PID_FILE%" >nul 2>&1
     )
 ) else (
-    echo [%APP_NAME%] Not running
+    set "FOUND_PID="
+    for /f %%a in ('powershell -NoProfile -Command "Get-CimInstance Win32_Process | Where-Object { $_.Name -like 'java*' -and $_.CommandLine -like '*%APP_JAR%*' } | Select-Object -First 1 -ExpandProperty ProcessId"') do (
+        set "FOUND_PID=%%a"
+    )
+    if defined FOUND_PID (
+        echo [%APP_NAME%] Running, PID: !FOUND_PID! (PID file missing)
+    ) else (
+        echo [%APP_NAME%] Not running
+    )
 )
 goto theend
 

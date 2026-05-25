@@ -49,6 +49,9 @@ public class HikvisionProperties {
 
     private List<String> cameraAuthCodes = new ArrayList<>(List.of("view"));
 
+    /** 查询视频资源时，按区域名称精确匹配排除的黑名单列表 */
+    private List<String> excludeRegionNames = new ArrayList<>();
+
     @Valid
     private DefaultPreview defaultPreview = new DefaultPreview();
 
@@ -181,6 +184,14 @@ public class HikvisionProperties {
 
     public void setCameraAuthCodes(List<String> cameraAuthCodes) {
         this.cameraAuthCodes = cameraAuthCodes == null ? new ArrayList<>() : cameraAuthCodes;
+    }
+
+    public List<String> getExcludeRegionNames() {
+        return excludeRegionNames;
+    }
+
+    public void setExcludeRegionNames(List<String> excludeRegionNames) {
+        this.excludeRegionNames = excludeRegionNames == null ? new ArrayList<>() : excludeRegionNames;
     }
 
     public DefaultPreview getDefaultPreview() {

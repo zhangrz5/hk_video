@@ -221,18 +221,22 @@ async function doCapture() {
     setStatus("正在抓图...");
     try {
         const r = await fetchJson(`/api/hikvision/cameras/${encodeURIComponent(state.selected.cameraIndexCode)}/capture`, { method: "POST" });
-        els.captureImg.src = r.picUrl;
         state.capturePicUrl = r.picUrl;
+        els.captureImg.src = proxyImageUrl(r.picUrl);
         els.captureDialog.showModal();
         setStatus("抓图成功");
     } catch (e) { setStatus(e.message); }
+}
+
+function proxyImageUrl(url) {
+    return `/api/hikvision/image/proxy?url=${encodeURIComponent(url)}`;
 }
 
 async function downloadCapture() {
     if (!state.capturePicUrl) return;
     try {
         setStatus("正在下载图片...");
-        const proxyUrl = `/api/hikvision/image/proxy?url=${encodeURIComponent(state.capturePicUrl)}`;
+        const proxyUrl = proxyImageUrl(state.capturePicUrl);
         const resp = await fetch(proxyUrl);
         if (!resp.ok) throw new Error(`下载失败: ${resp.status}`);
         const blob = await resp.blob();

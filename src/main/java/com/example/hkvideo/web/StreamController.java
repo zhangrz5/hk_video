@@ -19,11 +19,6 @@ import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBo
 
 import java.io.InputStream;
 
-/**
- * FFmpeg 实时视频流端点。
- * <p>
- * 浏览器请求 → 后端获取 RTSP 地址 → FFmpeg 转码 → HTTP-FLV 流式响应。
- */
 @RestController
 @RequestMapping("/api/hikvision")
 public class StreamController {
@@ -38,58 +33,35 @@ public class StreamController {
         this.ffmpegService = ffmpegService;
     }
 
-    /**
-     * 实时预览 - HTTP-FLV 流。
-     * <p>
-     * GET /api/hikvision/cameras/{cameraIndexCode}/live.flv
-     */
     @GetMapping("/cameras/{cameraIndexCode}/live.flv")
-    public ResponseEntity<StreamingResponseBody> liveFlv(
-            @PathVariable String cameraIndexCode) {
-
-        // 1. 获取 RTSP URL
+    public ResponseEntity<StreamingResponseBody> liveFlv(@PathVariable String cameraIndexCode) {
         PreviewRequest req = new PreviewRequest("rtsp", null, null, null, null);
         PreviewResponse preview = videoService.previewUrl(cameraIndexCode, req);
-        String rtspUrl = preview.url();
-        log.info("实时预览 HTTP-FLV: camera={}, rtsp={}", cameraIndexCode, rtspUrl);
+        String streamUrl = preview.url();
+        log.info("Live HTTP-FLV: camera={}, source={}", cameraIndexCode, streamUrl);
 
-        // 2. 启动 FFmpeg 并返回流式响应
-        String streamKey = "live-" + cameraIndexCode;
-        return buildFlvResponse(rtspUrl, streamKey);
+        return buildFlvResponse(streamUrl, "live-" + cameraIndexCode);
     }
 
-    /**
-     * 录像回放 - HTTP-FLV 流。
-     * <p>
-     * GET /api/hikvision/cameras/{cameraIndexCode}/playback.flv?begin=...&end=...
-     */
     @GetMapping("/cameras/{cameraIndexCode}/playback.flv")
     public ResponseEntity<StreamingResponseBody> playbackFlv(
             @PathVariable String cameraIndexCode,
             @RequestParam String begin,
             @RequestParam String end) {
 
-        // 修复 URL 参数中 + 号可能被解码为空格的问题（时区偏移 +08:00 → " 08:00"）
         String fixedBegin = ensureMillis(begin.replace(' ', '+'));
         String fixedEnd = ensureMillis(end.replace(' ', '+'));
-        log.info("录像回放: camera={}, begin=[{}], end=[{}]", cameraIndexCode, fixedBegin, fixedEnd);
+        log.info("Playback HTTP-FLV: camera={}, begin={}, end={}", cameraIndexCode, fixedBegin, fixedEnd);
 
-        // 1. 获取回放 RTSP URL
         PlaybackRequest req = new PlaybackRequest(fixedBegin, fixedEnd, "rtsp", null, null, null);
         PlaybackResponse playback = videoService.playbackUrl(cameraIndexCode, req);
-        String rtspUrl = playback.url();
-        log.info("录像回放 HTTP-FLV: camera={}, rtsp={}", cameraIndexCode, rtspUrl);
 
-        // 2. 启动 FFmpeg 并返回流式响应
-        String streamKey = "playback-" + cameraIndexCode;
-        return buildFlvResponse(rtspUrl, streamKey);
+        return buildFlvResponse(playback.url(), "playback-" + cameraIndexCode);
     }
 
-    private ResponseEntity<StreamingResponseBody> buildFlvResponse(String rtspUrl, String streamKey) {
+    private ResponseEntity<StreamingResponseBody> buildFlvResponse(String sourceUrl, String streamKey) {
         StreamingResponseBody body = outputStream -> {
-            InputStream flvStream = null;
-            try {
-                flvStream = ffmpegService.startStream(rtspUrl, streamKey);
+            try (InputStream flvStream = ffmpegService.startStream(sourceUrl, streamKey)) {
                 byte[] buffer = new byte[8192];
                 int bytesRead;
                 while ((bytesRead = flvStream.read(buffer)) != -1) {
@@ -97,41 +69,28 @@ public class StreamController {
                     outputStream.flush();
                 }
             } catch (Exception e) {
-                log.warn("流传输异常: key={}, reason={}", streamKey, e.getMessage());
-                // 向前端写入非 FLV 数据，触发 flvjs 的 ERROR 事件
-                try {
-                    outputStream.write(("ERROR: " + e.getMessage()).getBytes());
-                    outputStream.flush();
-                } catch (Exception ignored) {}
+                log.warn("FLV stream ended: key={}, reason={}", streamKey, e.getMessage());
             } finally {
                 ffmpegService.stopStream(streamKey);
             }
         };
 
         HttpHeaders headers = new HttpHeaders();
-        headers.set("Content-Type", "video/x-flv");
-        // 不要手动设置 Transfer-Encoding，Tomcat 会自动处理 chunked 编码
-        // 手动设置会导致重复头，Nginx 代理时会返回 502
-        headers.set("Cache-Control", "no-cache, no-store");
-        headers.set("Connection", "keep-alive");
+        headers.set(HttpHeaders.CONTENT_TYPE, "video/x-flv");
+        headers.set(HttpHeaders.CACHE_CONTROL, "no-cache, no-store");
         headers.set("Access-Control-Allow-Origin", "*");
-        headers.set("X-Accel-Buffering", "no");  // 告诉 Nginx 不要缓冲此响应
+        headers.set("X-Accel-Buffering", "no");
 
         return ResponseEntity.ok().headers(headers).body(body);
     }
 
-    /**
-     * 确保 ISO8601 时间字符串包含毫秒部分 .SSS。
-     * 海康回放接口要求格式：yyyy-MM-dd'T'HH:mm:ss.SSSXXX
-     * 例如：2026-05-08T07:38:00+08:00 → 2026-05-08T07:38:00.000+08:00
-     */
     private static String ensureMillis(String isoTime) {
-        if (isoTime == null) return null;
-        // 已包含毫秒（秒后面有 .）
+        if (isoTime == null) {
+            return null;
+        }
         if (isoTime.matches(".*T\\d{2}:\\d{2}:\\d{2}\\.\\d+.*")) {
             return isoTime;
         }
-        // 在秒和时区偏移之间插入 .000
         return isoTime.replaceFirst("(T\\d{2}:\\d{2}:\\d{2})", "$1.000");
     }
 }

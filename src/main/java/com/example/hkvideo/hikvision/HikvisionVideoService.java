@@ -43,11 +43,12 @@ public class HikvisionVideoService {
     // ===================== 监控点搜索 =====================
 
     public CameraPageResponse searchCameras(int pageNo, int pageSize, String keyword, String regionIndexCode) {
+        // 1. 向海康 API 全量拉取（数据总量不超过 100 条，一次请求即可覆盖）
         Map<String, Object> body = new LinkedHashMap<>();
-        body.put("pageNo", pageNo);
-        body.put("pageSize", pageSize);
+        body.put("pageNo", 1);
+        body.put("pageSize", 1000);
         if (isV2CameraSearch()) {
-            putIfText(body, "name", keyword);
+            // keyword 不传给海康，改为本地搜索，确保过滤后搜索结果一致
             if (regionIndexCode != null && !regionIndexCode.isBlank()) {
                 body.put("regionIndexCodes", List.of(regionIndexCode.trim()));
                 body.put("isSubRegion", properties.isIncludeSubRegions());
@@ -56,24 +57,43 @@ public class HikvisionVideoService {
                 body.put("authCodes", properties.getCameraAuthCodes());
             }
         } else {
-            putIfText(body, "cameraName", keyword);
             putIfText(body, "regionIndexCode", regionIndexCode);
         }
 
         JsonNode root = openApiClient.post(properties.getCameraSearchPath(), body);
         JsonNode data = extractData(root);
-        long total = data.path("total").asLong(0);
-        int responsePageNo = data.path("pageNo").asInt(pageNo);
-        int responsePageSize = data.path("pageSize").asInt(pageSize);
 
-        List<CameraView> cameras = new ArrayList<>();
+        // 2. 解析全部监控点
+        List<CameraView> allCameras = new ArrayList<>();
         JsonNode list = data.path("list");
         if (list.isArray()) {
             for (JsonNode item : list) {
-                cameras.add(toCameraView(item));
+                allCameras.add(toCameraView(item));
             }
         }
-        return new CameraPageResponse(responsePageNo, responsePageSize, total, cameras);
+
+        // 3. 按 excludeRegionNames 精确匹配过滤
+        List<String> excludes = properties.getExcludeRegionNames();
+        if (excludes != null && !excludes.isEmpty()) {
+            allCameras.removeIf(c -> c.regionName() != null && excludes.contains(c.regionName()));
+        }
+
+        // 4. 按关键字本地模糊搜索（匹配 cameraName 或 regionName）
+        if (keyword != null && !keyword.isBlank()) {
+            String kw = keyword.trim().toLowerCase();
+            allCameras.removeIf(c ->
+                    (c.cameraName() == null || !c.cameraName().toLowerCase().contains(kw))
+                 && (c.regionName() == null || !c.regionName().toLowerCase().contains(kw))
+            );
+        }
+
+        // 5. 本地分页
+        long total = allCameras.size();
+        int fromIndex = Math.min((pageNo - 1) * pageSize, allCameras.size());
+        int toIndex = Math.min(fromIndex + pageSize, allCameras.size());
+        List<CameraView> page = new ArrayList<>(allCameras.subList(fromIndex, toIndex));
+
+        return new CameraPageResponse(pageNo, pageSize, total, page);
     }
 
     // ===================== 预览取流 =====================
@@ -263,7 +283,8 @@ public class HikvisionVideoService {
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.parseMediaType(
                     contentType != null && !contentType.isBlank() ? contentType : "image/jpeg"));
-            headers.set(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"capture.jpg\"");
+            headers.set(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=\"capture.jpg\"");
+            headers.setCacheControl("no-store");
             headers.setContentLength(data.length);
 
             return new ResponseEntity<>(data, headers, HttpStatus.OK);
