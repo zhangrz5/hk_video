@@ -6,7 +6,13 @@ const state = {
     selected: null,
     flvPlayer: null,
     recording: false,
-    recordTaskID: null
+    recordTaskID: null,
+    playbackActive: false,
+    playbackDragging: false,
+    playbackTimer: null,
+    playbackOriginalBeginMs: null,
+    playbackCurrentBeginMs: null,
+    playbackEndMs: null
 };
 
 const els = {
@@ -27,7 +33,10 @@ const els = {
     playbackBegin: document.querySelector("#playbackBegin"),
     playbackEnd: document.querySelector("#playbackEnd"),
     playbackBtn: document.querySelector("#playbackBtn"),
+    playbackSeek: document.querySelector("#playbackSeek"),
+    playbackTimeText: document.querySelector("#playbackTimeText"),
     ptzSpeed: document.querySelector("#ptzSpeed"),
+    ptzSpeedValue: document.querySelector("#ptzSpeedValue"),
     captureBtn: document.querySelector("#captureBtn"),
     captureDialog: document.querySelector("#captureDialog"),
     captureCloseBtn: document.querySelector("#captureCloseBtn"),
@@ -120,6 +129,7 @@ function selectCamera(camera) {
 // ===================== FLV 播放器 =====================
 
 function destroyPlayer() {
+    stopPlaybackTimer();
     if (state.flvPlayer) {
         state.flvPlayer.pause();
         state.flvPlayer.unload();
@@ -154,12 +164,17 @@ function playFlvUrl(url) {
 function playSelected() {
     if (!state.selected?.cameraIndexCode) return;
     const id = encodeURIComponent(state.selected.cameraIndexCode);
+    resetPlaybackTimeline();
     setStatus("正在连接视频流...");
     playFlvUrl(`/api/hikvision/cameras/${id}/live.flv`);
     setStatus("正在播放");
 }
 
-function stopSelected() { destroyPlayer(); setStatus("已停止"); }
+function stopSelected() {
+    destroyPlayer();
+    resetPlaybackTimeline();
+    setStatus("已停止");
+}
 
 // ===================== 录像回放 =====================
 
@@ -168,16 +183,38 @@ function playPlayback() {
     const b = els.playbackBegin.value, e = els.playbackEnd.value;
     if (!b || !e) { setStatus("请选择开始和结束时间"); return; }
 
+    const beginMs = new Date(b).getTime();
+    const endMs = new Date(e).getTime();
+    if (!Number.isFinite(beginMs) || !Number.isFinite(endMs) || endMs <= beginMs) {
+        setStatus("回放结束时间必须晚于开始时间");
+        return;
+    }
+    preparePlaybackTimeline(beginMs, endMs);
+    startPlaybackAt(beginMs);
+}
+
+function startPlaybackAt(startMs) {
+    if (!state.selected?.cameraIndexCode || !state.playbackEndMs) return;
+    const maxStartMs = state.playbackEndMs - 1000;
+    const safeStartMs = Math.min(Math.max(startMs, state.playbackOriginalBeginMs), maxStartMs);
     const id = encodeURIComponent(state.selected.cameraIndexCode);
-    const begin = encodeURIComponent(toISO8601(b));
-    const end = encodeURIComponent(toISO8601(e));
+    const begin = encodeURIComponent(dateToISO8601(new Date(safeStartMs)));
+    const end = encodeURIComponent(dateToISO8601(new Date(state.playbackEndMs)));
+    state.playbackCurrentBeginMs = safeStartMs;
+    state.playbackActive = true;
+    const offsetSeconds = Math.floor((safeStartMs - state.playbackOriginalBeginMs) / 1000);
+    setPlaybackSeekValue(offsetSeconds);
     setStatus("正在获取回放...");
     playFlvUrl(`/api/hikvision/cameras/${id}/playback.flv?begin=${begin}&end=${end}`);
+    startPlaybackTimer();
     setStatus("正在回放");
 }
 
 function toISO8601(localDatetime) {
-    const d = new Date(localDatetime);
+    return dateToISO8601(new Date(localDatetime));
+}
+
+function dateToISO8601(d) {
     const off = -d.getTimezoneOffset();
     const sign = off >= 0 ? "+" : "-";
     const hh = String(Math.floor(Math.abs(off) / 60)).padStart(2, "0");
@@ -190,6 +227,85 @@ function toISO8601(localDatetime) {
         + ":" + String(d.getSeconds()).padStart(2, "0")
         + "." + String(d.getMilliseconds()).padStart(3, "0")
         + sign + hh + ":" + mm;
+}
+
+function preparePlaybackTimeline(beginMs, endMs) {
+    state.playbackOriginalBeginMs = beginMs;
+    state.playbackCurrentBeginMs = beginMs;
+    state.playbackEndMs = endMs;
+    state.playbackActive = true;
+    state.playbackDragging = false;
+    const durationSeconds = Math.max(1, Math.floor((endMs - beginMs) / 1000));
+    els.playbackSeek.max = String(durationSeconds);
+    els.playbackSeek.value = "0";
+    els.playbackSeek.disabled = false;
+    updatePlaybackTimeText(0, durationSeconds);
+}
+
+function resetPlaybackTimeline() {
+    stopPlaybackTimer();
+    state.playbackActive = false;
+    state.playbackDragging = false;
+    state.playbackOriginalBeginMs = null;
+    state.playbackCurrentBeginMs = null;
+    state.playbackEndMs = null;
+    els.playbackSeek.max = "0";
+    els.playbackSeek.value = "0";
+    els.playbackSeek.disabled = true;
+    updatePlaybackTimeText(0, 0);
+}
+
+function startPlaybackTimer() {
+    stopPlaybackTimer();
+    state.playbackTimer = window.setInterval(syncPlaybackTimeline, 500);
+}
+
+function stopPlaybackTimer() {
+    if (state.playbackTimer) {
+        window.clearInterval(state.playbackTimer);
+        state.playbackTimer = null;
+    }
+}
+
+function syncPlaybackTimeline() {
+    if (!state.playbackActive || state.playbackDragging || state.playbackOriginalBeginMs == null || state.playbackCurrentBeginMs == null) {
+        return;
+    }
+    const videoSeconds = Number.isFinite(els.videoPlayer.currentTime) ? els.videoPlayer.currentTime : 0;
+    const elapsedSeconds = Math.floor((state.playbackCurrentBeginMs - state.playbackOriginalBeginMs) / 1000 + videoSeconds);
+    setPlaybackSeekValue(elapsedSeconds);
+}
+
+function setPlaybackSeekValue(seconds) {
+    const max = Number(els.playbackSeek.max) || 0;
+    const value = Math.min(Math.max(0, Math.floor(seconds)), max);
+    els.playbackSeek.value = String(value);
+    updatePlaybackTimeText(value, max);
+}
+
+function updatePlaybackTimeText(currentSeconds, totalSeconds) {
+    els.playbackTimeText.textContent = `${formatDuration(currentSeconds)} / ${formatDuration(totalSeconds)}`;
+}
+
+function formatDuration(totalSeconds) {
+    const safeSeconds = Math.max(0, Math.floor(totalSeconds || 0));
+    const hours = Math.floor(safeSeconds / 3600);
+    const minutes = Math.floor((safeSeconds % 3600) / 60);
+    const seconds = safeSeconds % 60;
+    if (hours > 0) {
+        return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+    }
+    return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+}
+
+function seekPlayback() {
+    if (!state.playbackActive || state.playbackOriginalBeginMs == null) {
+        return;
+    }
+    state.playbackDragging = false;
+    const targetSeconds = Number(els.playbackSeek.value) || 0;
+    const targetMs = state.playbackOriginalBeginMs + targetSeconds * 1000;
+    startPlaybackAt(targetMs);
 }
 
 // ===================== 云台控制 =====================
@@ -212,6 +328,12 @@ function initPtzControls() {
         btn.addEventListener("touchstart", e => { e.preventDefault(); ptzCommand(cmd, 0); });
         btn.addEventListener("touchend", () => ptzCommand(cmd, 1));
     });
+    updatePtzSpeedValue();
+    els.ptzSpeed.addEventListener("input", updatePtzSpeedValue);
+}
+
+function updatePtzSpeedValue() {
+    els.ptzSpeedValue.textContent = els.ptzSpeed.value;
 }
 
 // ===================== 抓图 =====================
@@ -307,6 +429,12 @@ els.prevBtn.addEventListener("click", () => { if (state.pageNo > 1) { state.page
 els.nextBtn.addEventListener("click", () => { const tp = Math.max(1, Math.ceil(state.total / state.pageSize)); if (state.pageNo < tp) { state.pageNo++; loadCameras(); } });
 els.pageSizeSelect.addEventListener("change", () => { state.pageSize = Number(els.pageSizeSelect.value); state.pageNo = 1; loadCameras(); });
 els.playbackBtn.addEventListener("click", playPlayback);
+els.playbackSeek.addEventListener("pointerdown", () => { state.playbackDragging = true; });
+els.playbackSeek.addEventListener("input", () => {
+    state.playbackDragging = true;
+    updatePlaybackTimeText(Number(els.playbackSeek.value) || 0, Number(els.playbackSeek.max) || 0);
+});
+els.playbackSeek.addEventListener("change", seekPlayback);
 els.captureBtn.addEventListener("click", doCapture);
 els.captureCloseBtn.addEventListener("click", () => els.captureDialog.close());
 els.captureDownload.addEventListener("click", downloadCapture);
@@ -316,4 +444,5 @@ initPtzControls();
 
 if (window.lucide) lucide.createIcons();
 initPlaybackDefaults();
+resetPlaybackTimeline();
 loadCameras();

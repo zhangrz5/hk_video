@@ -356,6 +356,10 @@ button, input, select { font: inherit; }
 .action-btn:disabled { opacity: 0.35; cursor: not-allowed; }
 .action-btn svg { width: 15px; height: 15px; flex-shrink: 0; }
 
+#recordStartBtn {
+    display: none !important;
+}
+
 .action-primary {
     background: linear-gradient(135deg, var(--accent), #6e5cff);
     border-color: transparent;
@@ -446,12 +450,67 @@ video {
 
 .field input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-glow); }
 
+.playback-timeline {
+    margin-top: 12px;
+    display: grid;
+    gap: 6px;
+}
+
+.playback-timeline input[type="range"] {
+    width: 100%;
+    height: 6px;
+    appearance: none;
+    -webkit-appearance: none;
+    border-radius: 999px;
+    background: var(--line);
+    outline: none;
+    cursor: pointer;
+}
+
+.playback-timeline input[type="range"]:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
+.playback-timeline input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: var(--accent);
+    border: 2px solid var(--text);
+    box-shadow: 0 0 0 4px var(--accent-glow);
+}
+
+.playback-timeline input[type="range"]::-moz-range-thumb {
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: var(--accent);
+    border: 2px solid var(--text);
+    box-shadow: 0 0 0 4px var(--accent-glow);
+}
+
+.playback-time-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    color: var(--muted);
+    font-size: 11px;
+}
+
+.playback-time-row span:first-child {
+    color: var(--text);
+    font-variant-numeric: tabular-nums;
+}
+
 /* 云台控制 */
 
 .ptz-compact {
     display: flex;
-    gap: 12px;
-    align-items: center;
+    gap: 14px;
+    align-items: stretch;
 }
 
 .ptz-grid {
@@ -495,11 +554,19 @@ video {
 .ptz-side {
     display: flex;
     flex-direction: column;
-    gap: 4px;
+    justify-content: space-between;
+    gap: 10px;
+    min-width: 180px;
+}
+
+.ptz-zoom-row {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8px;
 }
 
 .ptz-side-btn {
-    width: 34px;
+    width: 100%;
     height: 34px;
     display: grid;
     place-items: center;
@@ -515,27 +582,66 @@ video {
 .ptz-side-btn:active { background: var(--accent); color: #fff; }
 .ptz-side-btn svg { width: 14px; height: 14px; }
 
-.speed-label {
-    margin-top: 2px;
+.speed-control {
+    padding: 10px;
+    display: grid;
+    gap: 9px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: var(--surface);
 }
 
-.speed-label input[type="range"] {
-    width: 34px;
-    height: 4px;
+.speed-control-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    color: var(--muted);
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.speed-control-head strong {
+    min-width: 24px;
+    height: 24px;
+    display: grid;
+    place-items: center;
+    border-radius: 6px;
+    background: var(--accent);
+    color: #fff;
+    font-size: 13px;
+}
+
+.speed-control input[type="range"] {
+    width: 100%;
+    height: 8px;
     appearance: none;
     -webkit-appearance: none;
-    background: var(--line);
-    border-radius: 4px;
+    background: linear-gradient(90deg, var(--accent), #7c5cff);
+    border-radius: 999px;
     outline: none;
+    cursor: pointer;
 }
 
-.speed-label input[type="range"]::-webkit-slider-thumb {
+.speed-control input[type="range"]::-webkit-slider-thumb {
     -webkit-appearance: none;
-    width: 12px;
-    height: 12px;
+    width: 18px;
+    height: 18px;
     background: var(--accent);
+    border: 2px solid #fff;
     border-radius: 50%;
     cursor: pointer;
+    box-shadow: 0 0 0 4px var(--accent-glow);
+}
+
+.speed-control input[type="range"]::-moz-range-thumb {
+    width: 18px;
+    height: 18px;
+    background: var(--accent);
+    border: 2px solid #fff;
+    border-radius: 50%;
+    cursor: pointer;
+    box-shadow: 0 0 0 4px var(--accent-glow);
 }
 
 /* ===================== 录像状态 ===================== */

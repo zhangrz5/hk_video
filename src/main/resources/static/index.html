@@ -77,7 +77,7 @@
                         <i data-lucide="camera"></i>
                         <span>抓图</span>
                     </button>
-                    <button class="action-btn" id="recordStartBtn" type="button" disabled title="开始录像">
+                    <button class="action-btn" id="recordStartBtn" type="button" disabled hidden title="开始录像">
                         <i data-lucide="circle-dot"></i>
                         <span>录像</span>
                     </button>
@@ -88,8 +88,7 @@
                 <video id="videoPlayer" controls autoplay muted playsinline></video>
             </div>
 
-            <!-- Feature deferred: playback and PTZ UI kept for later enablement. -->
-            <div class="controls-row deferred-feature" data-feature-state="deferred" hidden>
+            <div class="controls-row advanced-controls" data-feature-state="enabled">
                 <div class="control-card">
                     <h3><i data-lucide="history"></i> 录像回放</h3>
                     <div class="playback-form">
@@ -104,6 +103,13 @@
                         <button class="action-btn action-primary" id="playbackBtn" type="button" disabled>
                             <i data-lucide="play"></i><span>回放</span>
                         </button>
+                    </div>
+                    <div class="playback-timeline">
+                        <input id="playbackSeek" type="range" min="0" max="0" value="0" disabled>
+                        <div class="playback-time-row">
+                            <span id="playbackTimeText">00:00 / 00:00</span>
+                            <span>拖动后从目标时间重新取流</span>
+                        </div>
                     </div>
                 </div>
 
@@ -122,11 +128,15 @@
                             <button class="ptz-btn" data-cmd="RIGHT_DOWN">↘</button>
                         </div>
                         <div class="ptz-side">
-                            <button class="ptz-side-btn" data-cmd="ZOOM_IN" title="放大"><i data-lucide="zoom-in"></i></button>
-                            <button class="ptz-side-btn" data-cmd="ZOOM_OUT" title="缩小"><i data-lucide="zoom-out"></i></button>
-                            <button class="ptz-side-btn" data-cmd="FOCUS_NEAR" title="聚焦近"><i data-lucide="scan"></i></button>
-                            <button class="ptz-side-btn" data-cmd="FOCUS_FAR" title="聚焦远"><i data-lucide="eye"></i></button>
-                            <label class="speed-label">
+                            <div class="ptz-zoom-row">
+                                <button class="ptz-side-btn" data-cmd="ZOOM_IN" title="放大"><i data-lucide="zoom-in"></i></button>
+                                <button class="ptz-side-btn" data-cmd="ZOOM_OUT" title="缩小"><i data-lucide="zoom-out"></i></button>
+                            </div>
+                            <label class="speed-control">
+                                <span class="speed-control-head">
+                                    <span>云台速度</span>
+                                    <strong id="ptzSpeedValue">4</strong>
+                                </span>
                                 <input id="ptzSpeed" type="range" min="1" max="7" value="4">
                             </label>
                         </div>

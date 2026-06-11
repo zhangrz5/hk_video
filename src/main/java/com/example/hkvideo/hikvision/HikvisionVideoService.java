@@ -135,6 +135,7 @@ public class HikvisionVideoService {
         body.put("cameraIndexCode", cameraIndexCode);
         body.put("beginTime", request.beginTime());
         body.put("endTime", request.endTime());
+        body.put("recordLocation", 1);
         body.put("protocol", firstNonBlank(request.protocol(), "hls"));
         body.put("streamType", request.streamType() != null ? request.streamType() : 0);
         body.put("transmode", request.transmode() != null ? request.transmode() : 1);
